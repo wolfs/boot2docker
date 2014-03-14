@@ -22,7 +22,8 @@ RUN apt-get -y install  squashfs-tools \
                         xorriso \
                         syslinux \
                         automake \
-                        pkg-config
+                        pkg-config \
+                        p7zip-full
 
 # Make the ROOTFS
 RUN mkdir -p $ROOTFS
@@ -83,6 +84,21 @@ RUN cd /linux-kernel && \
     CPPFLAGS="-m32 -I/tmp/kheaders/include" CLFAGS=$CPPFLAGS LDFLAGS=$CPPFLAGS make && \
     DESTDIR=$ROOTFS make install && \
     rm -rf /tmp/kheaders
+
+# Build VBox guest additions
+RUN mkdir -p /vboxguest && \
+    cd /vboxguest && \
+    curl -L -o vboxguest.iso http://download.virtualbox.org/virtualbox/4.3.8/VBoxGuestAdditions_4.3.8.iso && \
+    7z x vboxguest.iso -ir'!VBoxLinuxAdditions.run' && \
+    sh VBoxLinuxAdditions.run --noexec --target . && \
+    mkdir x86 && cd x86 && tar xvjf ../VBoxGuestAdditions-x86.tar.bz2 && cd .. && \
+    mkdir amd64 && cd amd64 && tar xvjf ../VBoxGuestAdditions-amd64.tar.bz2 && cd .. && \
+    cd amd64/src/vboxguest-4.3.8 && KERN_DIR=/linux-kernel/ make && cd ../../.. && \
+    cp amd64/src/vboxguest-4.3.8/*.ko $ROOTFS/lib/modules/$KERNEL_VERSION-tinycore64 && \
+    mkdir -p $ROOTFS/sbin && cp x86/lib/VBoxGuestAdditions/mount.vboxsf $ROOTFS/sbin/
+
+# Make sure that all the modules we might have added are recognized
+RUN depmod -a -b $ROOTFS $KERNEL_VERSION-tinycore64
 
 # Download the rootfs, don't unpack it though:
 RUN curl -L -o /tcl_rootfs.gz $TCL_REPO_BASE/release/distribution_files/rootfs.gz
